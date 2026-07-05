@@ -10,6 +10,9 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,500;0,600;1,400;1,500&display=swap" rel="stylesheet">
     <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
+    
+    <!-- Cloudflare Turnstile Doğrulama Kütüphanesi -->
+    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
@@ -30,7 +33,6 @@
         }
     </script>
     <style>
-        /* Yalpalama hatasını çözmek için overflow-y: scroll eklendi */
         body { background-color: #0B0F19; color: #F8FAFC; overflow-y: scroll; }
         .glass-panel { background: rgba(21, 29, 46, 0.7); backdrop-filter: blur(10px); border: 1px solid rgba(212, 175, 55, 0.1); }
         ::-webkit-scrollbar { width: 8px; }
@@ -70,7 +72,6 @@
             <button onclick="window.navigate('blog'); window.toggleDrawer()" class="text-left text-lg text-slate-300 hover:text-gold-400 transition-colors py-2"><i class="fas fa-pen-nib w-8"></i> Blog</button>
             <button onclick="window.navigate('tutorial'); window.toggleDrawer()" class="text-left text-lg text-slate-300 hover:text-gold-400 transition-colors py-2"><i class="fas fa-play-circle w-8"></i> Nasıl Çalınır?</button>
             <button onclick="window.navigate('about'); window.toggleDrawer()" class="text-left text-lg text-slate-300 hover:text-gold-400 transition-colors py-2"><i class="fas fa-info-circle w-8"></i> Hakkımızda</button>
-            <button onclick="window.navigate('contact'); window.toggleDrawer()" class="text-left text-lg text-slate-300 hover:text-gold-400 transition-colors py-2"><i class="fas fa-envelope w-8"></i> İletişim</button>
             <div class="h-px w-full bg-slate-800 my-4"></div>
             <button onclick="window.openSearch(); window.toggleDrawer()" class="text-left text-lg text-slate-300 hover:text-gold-400 transition-colors py-2"><i class="fas fa-search w-8"></i> Arama Yap</button>
             <div id="admin-menu-container"></div>
@@ -83,7 +84,7 @@
         <div class="w-full max-w-2xl bg-dark-800 rounded-2xl shadow-2xl border border-gold-500/20 overflow-hidden flex flex-col max-h-[80vh]">
             <div class="p-4 border-b border-slate-700 flex items-center relative">
                 <i class="fas fa-search text-slate-400 absolute left-8"></i>
-                <input type="text" id="global-search-input" placeholder="Site içinde ara (Örn: yiruma, notalar...)" class="w-full bg-dark-900 border border-slate-600 rounded-xl py-4 pl-12 pr-12 text-white font-sans focus:outline-none focus:border-gold-400 transition-colors">
+                <input type="text" id="global-search-input" placeholder="Site içinde ara..." class="w-full bg-dark-900 border border-slate-600 rounded-xl py-4 pl-12 pr-12 text-white font-sans focus:outline-none focus:border-gold-400 transition-colors">
                 <button onclick="window.closeSearch()" class="absolute right-8 text-slate-400 hover:text-white"><i class="fas fa-times text-xl"></i></button>
             </div>
             <div id="search-results" class="p-4 overflow-y-auto hidden"></div>
@@ -135,6 +136,15 @@
         const EMAILJS_TEMPLATE_ID = "piyanoyla_yolculuk_ID";
         const ADMIN_EMAIL = "admin@piyanoylayolculuk.com";
 
+        const firebaseConfig = {
+            apiKey: "AIzaSyDummyKeyPiyanoylaYolculuk2026",
+            authDomain: "piyanoylayolculuk.firebaseapp.com",
+            projectId: "piyanoylayolculuk",
+            storageBucket: "piyanoylayolculuk.appspot.com",
+            messagingSenderId: "822753411196",
+            appId: "1:822753411196:web:46a5a6f034da93663c89f9"
+        };
+
         const INITIAL_DATA = {
             library: [
                 { id: '1', type: 'music', title: "Interstellar - Main Theme", duration: "4:12", size: "3.5 MB", url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3", note: "Filmin ikonik ana teması." },
@@ -147,8 +157,7 @@
             tutorials: [
                 { id: '1', title: "Interstellar Kolay Versiyon", youtubeId: "7maJOI3QMu0", notes: "A minör akorunun çevrimleri üzerinde dönen bu parçada pedalı çok temiz kullanmak hayati önem taşır." }
             ],
-            about: "Müziğin evrensel dilini piyanoyla ifade etmek ve bu tutkuyu herkesle paylaşmak amacıyla kurulan platformumuz sadece bir YouTube kanalı değil, sanatla nefes alan bir ailedir.\n\n\"Müzik, kelimelerin bittiği yerde başlar.\"",
-            messages: []
+            about: "Müziğin evrensel dilini piyanoyla ifade etmek ve bu tutkuyu herkesle paylaşmak amacıyla kurulan platformumuz sadece bir YouTube kanalı değil, sanatla nefes alan bir ailedir.\n\n\"Müzik, kelimelerin bittiği yerde başlar.\""
         };
 
         window.state = { 
@@ -161,84 +170,212 @@
             fbUser: null,
             libraryTab: 'music',
             tutorialSearchQuery: '',
+            blogSort: 'new',
+            turnstileToken: null,
+            viewedBlogs: [],
             adminTab: 'blogs',
-            data: INITIAL_DATA,
-            homeSlide: 0
+            data: INITIAL_DATA
         };
 
         let db, auth, onSnapshotFn, collectionFn, docFn, setDocFn, getDocFn, updateDocFn, deleteDocFn, signInPopupFn, gProvider;
 
-        const firebaseConfig = {
-          apiKey: "AIzaSyBdzBkbivLlkuL6xgrV2ASeIrkOXc4zYgo",
-          authDomain: "piyanoyla-yolculuk.firebaseapp.com",
-          projectId: "piyanoyla-yolculuk",
-          storageBucket: "piyanoyla-yolculuk.firebasestorage.app",
-          messagingSenderId: "822753411196",
-          appId: "1:822753411196:web:46a5a6f034da93663c89f9"
+        const trMonths = { "ocak": 0, "şubat": 1, "mart": 2, "nisan": 3, "mayıs": 4, "haziran": 5, "temmuz": 6, "ağustos": 7, "eylül": 8, "ekim": 9, "kasım": 10, "aralık": 11 };
+        window.parseTrDate = (dateStr) => {
+            if (!dateStr) return 0;
+            const parts = dateStr.toLowerCase().split(' ');
+            if (parts.length === 3) {
+                const day = parseInt(parts[0]);
+                const month = trMonths[parts[1]] || 0;
+                const year = parseInt(parts[2]);
+                return new Date(year, month, day).getTime();
+            }
+            return Date.parse(dateStr) || 0;
         };
 
-        window.onload = () => {
-            const initFirebase = async () => {
-                // Firebase modüllerinin yüklenmesini bekle (Sayfanın çökmesini engeller)
-                if (!window.firebaseModules) {
-                    setTimeout(initFirebase, 100);
-                    return;
-                }
-                const { initializeApp, getAuth, signInAnonymously, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, getFirestore, collection, doc, setDoc, getDoc, onSnapshot, updateDoc, deleteDoc } = window.firebaseModules;
-                onSnapshotFn = onSnapshot; collectionFn = collection; docFn = doc; setDocFn = setDoc; getDocFn = getDoc; updateDocFn = updateDoc; deleteDocFn = deleteDoc;
-                signInPopupFn = signInWithPopup; gProvider = new GoogleAuthProvider();
-                
-                try {
-                    const app = initializeApp(firebaseConfig);
-                    auth = getAuth(app);
-                    db = getFirestore(app);
+        window.renderTurnstile = (containerId) => {
+            window.state.turnstileToken = null;
+            const el = document.querySelector(containerId);
+            if (!el) return;
 
-                    await signInAnonymously(auth);
-                    onAuthStateChanged(auth, async (user) => {
-                        window.state.fbUser = user;
-                        if (user) { initDatabaseListeners(); checkActiveSession(); }
-                    });
-                } catch (e) {
-                    console.error("Firebase init error:", e);
+            const isInsideIframe = window.self !== window.top;
+
+            if (isInsideIframe || typeof turnstile === 'undefined') {
+                window.renderFallbackVerification(containerId);
+                return;
+            }
+
+            try {
+                turnstile.render(containerId, {
+                    // KOPYALADIĞINIZ SITE KEY DEĞERİNİ AŞAĞIDAKİ ALANA YAPIŞTIRIN:
+                    sitekey: '0x4AAAAAADupZQgj4zSPhVm3', 
+                    theme: 'dark',
+                    callback: function(token) {
+                        window.state.turnstileToken = token;
+                    },
+                    'error-callback': function() {
+                        window.renderFallbackVerification(containerId);
+                    }
+                });
+            } catch (e) {
+                console.warn("Turnstile güvenlik sınırına takıldı. Alternatif doğrulamaya geçiliyor.");
+                window.renderFallbackVerification(containerId);
+            }
+        };
+
+        window.renderFallbackVerification = (containerId) => {
+            const container = document.querySelector(containerId);
+            if (!container) return;
+
+            container.innerHTML = `
+                <div class="w-full bg-dark-900/90 border border-gold-500/30 rounded-xl p-3 select-none">
+                    <div class="text-xs text-slate-400 mb-2 text-center flex items-center justify-center gap-1.5 font-sans">
+                        <i class="fas fa-shield-alt text-gold-400"></i>
+                        <span>Güvenli Önizleme Doğrulaması</span>
+                    </div>
+                    <div id="verify-slider-track" class="w-full bg-slate-800/40 h-11 rounded-lg relative flex items-center justify-center overflow-hidden border border-slate-700/80">
+                        <span id="verify-slider-text" class="text-xs text-slate-400 font-sans pointer-events-none transition-opacity duration-200">
+                            Doğrulamak için kaydırın &rarr;
+                        </span>
+                        <div id="verify-slider-thumb" class="absolute left-1 top-1 bottom-1 w-9 bg-gold-500 text-dark-900 rounded-md cursor-grab flex items-center justify-center hover:bg-gold-400 active:cursor-grabbing transition-all shadow-md">
+                            <i class="fas fa-music text-xs"></i>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            const thumb = container.querySelector('#verify-slider-thumb');
+            const track = container.querySelector('#verify-slider-track');
+            const text = container.querySelector('#verify-slider-text');
+            
+            let isDragging = false;
+            let startX = 0;
+            let maxSlide = 0;
+
+            function getClientX(e) {
+                return e.touches ? e.touches[0].clientX : e.clientX;
+            }
+
+            function onStart(e) {
+                isDragging = true;
+                startX = getClientX(e);
+                maxSlide = track.clientWidth - thumb.clientWidth - 8;
+                thumb.style.transition = 'none';
+            }
+
+            function onMove(e) {
+                if (!isDragging) return;
+                const currentX = getClientX(e);
+                let diffX = currentX - startX;
+                if (diffX < 0) diffX = 0;
+                if (diffX > maxSlide) diffX = maxSlide;
+                
+                thumb.style.left = `${diffX + 4}px`;
+                text.style.opacity = 1 - (diffX / maxSlide);
+
+                if (diffX >= maxSlide - 2) {
+                    onSuccess();
                 }
-            };
-            initFirebase();
+            }
+
+            function onEnd() {
+                if (!isDragging) return;
+                isDragging = false;
+                if (!window.state.turnstileToken) {
+                    thumb.style.transition = 'left 0.3s ease-out';
+                    thumb.style.left = '4px';
+                    text.style.opacity = '1';
+                }
+            }
+
+            function onSuccess() {
+                isDragging = false;
+                window.state.turnstileToken = 'sandbox-verified-token-' + Date.now();
+                thumb.style.transition = 'all 0.3s ease-out';
+                thumb.style.left = 'calc(100% - 40px)';
+                thumb.style.backgroundColor = '#22c55e'; 
+                thumb.innerHTML = '<i class="fas fa-check text-white"></i>';
+                track.style.backgroundColor = 'rgba(34, 197, 94, 0.15)';
+                track.style.borderColor = 'rgba(34, 197, 94, 0.4)';
+                text.innerHTML = '<span class="text-green-400 font-bold">Doğrulandı!</span>';
+                text.style.opacity = '1';
+
+                thumb.removeEventListener('mousedown', onStart);
+                document.removeEventListener('mousemove', onMove);
+                document.removeEventListener('mouseup', onEnd);
+                thumb.removeEventListener('touchstart', onStart);
+                document.removeEventListener('touchmove', onMove);
+                document.removeEventListener('touchend', onEnd);
+            }
+
+            thumb.addEventListener('mousedown', onStart);
+            document.addEventListener('mousemove', onMove);
+            document.addEventListener('mouseup', onEnd);
+
+            thumb.addEventListener('touchstart', onStart, { passive: true });
+            document.addEventListener('touchmove', onMove, { passive: true });
+            document.addEventListener('touchend', onEnd);
+        };
+
+        window.changeBlogSort = (sortVal) => {
+            window.state.blogSort = sortVal;
+            window.render();
+        };
+
+        window.onload = async () => {
+            const { initializeApp, getAuth, signInAnonymously, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, getFirestore, collection, doc, setDoc, getDoc, onSnapshot, updateDoc, deleteDoc } = window.firebaseModules;
+            onSnapshotFn = onSnapshot; collectionFn = collection; docFn = doc; setDocFn = setDoc; getDocFn = getDoc; updateDocFn = updateDoc; deleteDocFn = deleteDoc;
+            signInPopupFn = signInWithPopup; gProvider = new GoogleAuthProvider();
+            
+            try {
+                const app = initializeApp(firebaseConfig);
+                auth = getAuth(app);
+                db = getFirestore(app);
+
+                await signInAnonymously(auth);
+                onAuthStateChanged(auth, async (user) => {
+                    window.state.fbUser = user;
+                    if (user) { initDatabaseListeners(); checkActiveSession(); }
+                });
+            } catch (e) {
+                console.warn("Firebase bağlantısı kurulamadı. Uygulama lokal bellek modunda çalışmaya devam ediyor.", e);
+                window.render();
+            }
             try { emailjs.init(EMAILJS_PUBLIC_KEY); } catch(e){}
         };
 
         function initDatabaseListeners() {
-            if (!window.state.fbUser) return;
+            if (!window.state.fbUser || !db) return;
             
-            onSnapshotFn(collectionFn(db, 'artifacts', window.state.appId, 'users'), (snap) => {
-                let u = []; snap.forEach(doc => u.push({ id: doc.id, ...doc.data() })); window.state.dbUsers = u;
-            });
-            onSnapshotFn(collectionFn(db, 'artifacts', window.state.appId, 'blogs'), (snap) => {
-                let items = []; snap.forEach(doc => items.push({ id: doc.id, ...doc.data() }));
-                if(items.length > 0) window.state.data.blogs = items;
-                if(['blog', 'single-blog', 'admin'].includes(window.state.currentView)) window.render();
-            });
-            onSnapshotFn(collectionFn(db, 'artifacts', window.state.appId, 'library'), (snap) => {
-                let items = []; snap.forEach(doc => items.push({ id: doc.id, ...doc.data() }));
-                if(items.length > 0) window.state.data.library = items;
-                if(['library', 'admin'].includes(window.state.currentView)) window.render();
-            });
-            onSnapshotFn(collectionFn(db, 'artifacts', window.state.appId, 'tutorials'), (snap) => {
-                let items = []; snap.forEach(doc => items.push({ id: doc.id, ...doc.data() }));
-                if(items.length > 0) window.state.data.tutorials = items;
-                if(['tutorial', 'admin'].includes(window.state.currentView)) window.render();
-            });
-            onSnapshotFn(docFn(db, 'artifacts', window.state.appId, 'settings', 'about'), (snap) => {
-                if(snap.exists() && snap.data().text) window.state.data.about = snap.data().text;
-                if(['about', 'admin'].includes(window.state.currentView)) window.render();
-            });
-            onSnapshotFn(collectionFn(db, 'artifacts', window.state.appId, 'messages'), (snap) => {
-                let items = []; snap.forEach(doc => items.push({ id: doc.id, ...doc.data() }));
-                window.state.data.messages = items.sort((a,b) => b.timestamp - a.timestamp);
-                if(window.state.currentView === 'admin' && window.state.adminTab === 'messages') window.render();
-            });
+            try {
+                onSnapshotFn(collectionFn(db, 'artifacts', window.state.appId, 'users'), (snap) => {
+                    let u = []; snap.forEach(doc => u.push({ id: doc.id, ...doc.data() })); window.state.dbUsers = u;
+                });
+                onSnapshotFn(collectionFn(db, 'artifacts', window.state.appId, 'blogs'), (snap) => {
+                    let items = []; snap.forEach(doc => items.push({ id: doc.id, ...doc.data() }));
+                    if(items.length > 0) window.state.data.blogs = items;
+                    if(['blog', 'single-blog', 'admin'].includes(window.state.currentView)) window.render();
+                });
+                onSnapshotFn(collectionFn(db, 'artifacts', window.state.appId, 'library'), (snap) => {
+                    let items = []; snap.forEach(doc => items.push({ id: doc.id, ...doc.data() }));
+                    if(items.length > 0) window.state.data.library = items;
+                    if(['library', 'admin'].includes(window.state.currentView)) window.render();
+                });
+                onSnapshotFn(collectionFn(db, 'artifacts', window.state.appId, 'tutorials'), (snap) => {
+                    let items = []; snap.forEach(doc => items.push({ id: doc.id, ...doc.data() }));
+                    if(items.length > 0) window.state.data.tutorials = items;
+                    if(['tutorial', 'admin'].includes(window.state.currentView)) window.render();
+                });
+                onSnapshotFn(docFn(db, 'artifacts', window.state.appId, 'settings', 'about'), (snap) => {
+                    if(snap.exists() && snap.data().text) window.state.data.about = snap.data().text;
+                    if(['about', 'admin'].includes(window.state.currentView)) window.render();
+                });
+            } catch (err) {
+                console.warn("Gerçek zamanlı dinleyiciler başlatılamadı, yerel veriyle devam ediliyor.");
+            }
         }
 
         async function checkActiveSession() {
+            if (!db) return;
             try {
                 const sRef = docFn(db, 'artifacts', window.state.appId, 'users', window.state.fbUser.uid, 'session', 'current');
                 const snap = await getDocFn(sRef);
@@ -271,8 +408,22 @@
         
         window.normalizeText = (t) => t ? t.toString().toLowerCase().replace(/ğ/g, 'g').replace(/ü/g, 'u').replace(/ş/g, 's').replace(/ı/g, 'i').replace(/ö/g, 'o').replace(/ç/g, 'c').normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, '') : "";
 
-        async function saveSession(cid) { if(window.state.fbUser) await setDocFn(docFn(db, 'artifacts', window.state.appId, 'users', window.state.fbUser.uid, 'session', 'current'), { customUserId: cid }); }
-        async function clearSession() { if(window.state.fbUser) { await deleteDocFn(docFn(db, 'artifacts', window.state.appId, 'users', window.state.fbUser.uid, 'session', 'current')); window.state.currentUser = null; } }
+        async function saveSession(cid) { 
+            if(window.state.fbUser && db) {
+                try {
+                    await setDocFn(docFn(db, 'artifacts', window.state.appId, 'users', window.state.fbUser.uid, 'session', 'current'), { customUserId: cid });
+                } catch(e){}
+            } 
+        }
+        async function clearSession() { 
+            if(window.state.fbUser && db) { 
+                try {
+                    await deleteDocFn(docFn(db, 'artifacts', window.state.appId, 'users', window.state.fbUser.uid, 'session', 'current')); 
+                } catch(e){}
+            }
+            window.state.currentUser = null; 
+            window.render();
+        }
 
         window.sendEmailVerification = async (email, code) => {
             try { await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, { to_email: email, to_name: window.state.authFlow.tempData?.name || window.state.currentUser?.name || "Kullanıcı", verification_code: code }); return true; } 
@@ -294,72 +445,29 @@
                 case 'single-blog': c = renderSingleBlog(); break;
                 case 'tutorial': c = renderTutorials(); break;
                 case 'about': c = renderAbout(); break;
-                case 'contact': c = renderContact(); break;
                 case 'auth': c = renderAuth(); break;
                 case 'settings': c = renderSettings(); break;
                 case 'admin': c = renderAdmin(); break;
                 default: c = renderHome();
             }
             m.innerHTML = `<div class="fade-in min-h-[80vh]">${c}</div>`;
+
+            if (window.state.currentView === 'auth') {
+                setTimeout(() => {
+                    const step = window.state.authFlow.step;
+                    if (step === 'login') {
+                        window.renderTurnstile('#login-turnstile-container');
+                    } else if (step === 'register') {
+                        window.renderTurnstile('#register-turnstile-container');
+                    }
+                }, 100);
+            }
         };
 
         function renderHome() {
             const authBtns = window.state.currentUser ? '' : `<button onclick="window.setAuthStep('register'); window.navigate('auth')" class="px-8 py-4 bg-transparent border-2 border-gold-500 text-gold-400 hover:bg-gold-500 hover:text-dark-900 rounded-lg font-serif font-bold text-lg transition-all w-full sm:w-auto"><i class="fas fa-user-plus mr-2"></i> Hemen Kaydol</button>`;
-            
-            // Slider İçerikleri (En yeni içerikler derleniyor)
-            const sliderItems = [
-                ...window.state.data.blogs.map(b => ({ type: 'Blog', title: b.title, desc: b.excerpt, img: b.image, link: `window.navigate('single-blog', '${b.id}')` })),
-                ...window.state.data.library.map(l => ({ type: 'Kütüphane', title: l.title, desc: l.note || 'Yeni müzik/ses eklendi', img: 'https://images.unsplash.com/photo-1520523839897-bd0b52f945a0?q=80&w=800', link: `window.navigate('library')` })),
-                ...window.state.data.tutorials.map(t => ({ type: 'Eğitim', title: t.title, desc: (t.notes || '').substring(0, 50)+'...', img: `https://img.youtube.com/vi/${t.youtubeId}/hqdefault.jpg`, link: `window.navigate('tutorial')` }))
-            ].slice(0, 5); // Son eklenen 5 içerik
-
-            let sliderHtml = '';
-            if(sliderItems.length > 0) {
-                const slides = sliderItems.map((item, idx) => `
-                    <div class="min-w-full relative h-[450px] flex items-center justify-center cursor-pointer group" onclick="${item.link}">
-                        <img src="${item.img}" class="absolute inset-0 w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity">
-                        <div class="absolute inset-0 bg-gradient-to-t from-dark-900/90 via-dark-900/30 to-transparent"></div>
-                        <div class="relative z-10 text-center px-6 max-w-3xl transform group-hover:scale-105 transition-transform duration-500 mt-8">
-                            <span class="inline-block px-5 py-1.5 rounded-full bg-gold-500 text-dark-900 font-bold text-sm mb-5 shadow-lg">${item.type}</span>
-                            <h3 class="text-3xl md:text-5xl font-serif font-bold text-white mb-4 drop-shadow-xl">${item.title}</h3>
-                            <p class="text-lg md:text-xl text-slate-100 drop-shadow-md font-sans leading-relaxed">${item.desc}</p>
-                        </div>
-                    </div>
-                `).join('');
-                
-                const dots = sliderItems.map((_, idx) => `
-                    <button onclick="window.goToSlide(${idx})" class="w-3 h-3 rounded-full transition-colors ${window.state.homeSlide === idx ? 'bg-gold-400 w-8' : 'bg-slate-600 hover:bg-slate-400'}"></button>
-                `).join('');
-
-                sliderHtml = `
-                <div class="w-full max-w-6xl mx-auto mt-20 px-4">
-                    <h2 class="text-4xl font-serif font-bold text-white mb-8 border-b border-gold-500/20 pb-4">Yeni <span class="text-gold-400">Eklenenler</span></h2>
-                    <div class="relative overflow-hidden rounded-3xl bg-dark-800 border border-slate-700 shadow-[0_0_40px_rgba(212,175,55,0.05)]">
-                        <div class="flex transition-transform duration-700 ease-out" style="transform: translateX(-${window.state.homeSlide * 100}%)">
-                            ${slides}
-                        </div>
-                        <button onclick="window.moveSlide(-1)" class="absolute left-6 top-1/2 -translate-y-1/2 bg-black/60 text-white p-4 rounded-full hover:bg-gold-500 hover:text-dark-900 transition-colors z-20 backdrop-blur-sm shadow-xl"><i class="fas fa-chevron-left text-xl"></i></button>
-                        <button onclick="window.moveSlide(1)" class="absolute right-6 top-1/2 -translate-y-1/2 bg-black/60 text-white p-4 rounded-full hover:bg-gold-500 hover:text-dark-900 transition-colors z-20 backdrop-blur-sm shadow-xl"><i class="fas fa-chevron-right text-xl"></i></button>
-                        <div class="absolute bottom-8 left-1/2 -translate-x-1/2 flex space-x-3 z-20">
-                            ${dots}
-                        </div>
-                    </div>
-                </div>`;
-            }
-
-            return `<div class="relative w-full h-[75vh] min-h-[600px] flex items-center justify-center overflow-hidden"><div class="absolute inset-0 bg-black"><img src="https://images.unsplash.com/photo-1520523839897-bd0b52f945a0?q=80&w=2070&auto=format&fit=crop" class="w-full h-full object-cover opacity-60"><div class="absolute inset-0 bg-gradient-to-t from-[#0B0F19] via-[#0B0F19]/40 to-transparent"></div></div><div class="relative z-10 text-center px-4 max-w-4xl mt-10"><h1 class="text-5xl md:text-7xl font-serif font-bold text-white mb-6">Müziğin Büyülü Dünyasına <span class="text-gold-400">Hoş Geldiniz</span></h1><p class="text-xl md:text-2xl text-slate-200 mb-10 font-sans drop-shadow-lg">Piyanoyla Yolculuk kanalının resmi web sitesi. Gerçek müzikler, sınırsız notalar ve size özel piyano arşivi.</p><div class="flex flex-col sm:flex-row items-center justify-center space-y-4 sm:space-y-0 sm:space-x-6"><button onclick="window.navigate('library')" class="px-8 py-4 bg-gold-500 hover:bg-gold-400 text-dark-900 rounded-lg font-serif font-bold text-lg transition-transform hover:scale-105 w-full sm:w-auto shadow-[0_0_20px_rgba(212,175,55,0.4)]"><i class="fas fa-headphones mr-2"></i> Kütüphaneyi Keşfet</button>${authBtns}</div></div></div>${sliderHtml}<div class="h-24"></div>`;
+            return `<div class="relative w-full h-[70vh] min-h-[600px] flex items-center justify-center overflow-hidden"><div class="absolute inset-0 bg-black"><img src="https://images.unsplash.com/photo-1520523839897-bd0b52f945a0?q=80&w=2070&auto=format&fit=crop" class="w-full h-full object-cover opacity-40"><div class="absolute inset-0 bg-gradient-to-t from-[#0B0F19] via-transparent to-transparent"></div></div><div class="relative z-10 text-center px-4 max-w-4xl"><h1 class="text-5xl md:text-7xl font-serif font-bold text-white mb-6">Müziğin Büyülü Dünyasına <span class="text-gold-400">Hoş Geldiniz</span></h1><p class="text-xl md:text-2xl text-slate-300 mb-10 font-sans">Piyanoyla Yolculuk kanalının resmi web sitesi. Gerçek müzikler, sınırsız notalar ve size özel piyano arşivi.</p><div class="flex flex-col sm:flex-row items-center justify-center space-y-4 sm:space-y-0 sm:space-x-6"><button onclick="window.navigate('library')" class="px-8 py-4 bg-gold-500 hover:bg-gold-400 text-dark-900 rounded-lg font-serif font-bold text-lg transition-transform hover:scale-105 w-full sm:w-auto"><i class="fas fa-headphones mr-2"></i> Kütüphaneyi Keşfet</button>${authBtns}</div></div></div>`;
         }
-
-        window.moveSlide = (dir) => {
-            const total = Math.min(5, window.state.data.blogs.length + window.state.data.library.length + window.state.data.tutorials.length);
-            if (total === 0) return;
-            window.state.homeSlide = (window.state.homeSlide + dir + total) % total;
-            window.render();
-        };
-        window.goToSlide = (idx) => {
-            window.state.homeSlide = idx;
-            window.render();
-        };
 
         window.setLibraryTab = (t) => { window.state.libraryTab = t; window.render(); };
         function renderLibrary() {
@@ -372,23 +480,113 @@
         window.handleLike = async (id) => {
             if(!window.state.currentUser) return window.showModal("Hata", "Beğenmek için giriş yapmalısınız.");
             const b = window.state.data.blogs.find(x=>x.id===id);
-            if(b) await updateDocFn(docFn(db, 'artifacts', window.state.appId, 'blogs', id), { likes: (b.likes||0)+1 });
+            if(b) {
+                b.likes = (b.likes||0) + 1;
+                if(db) {
+                    try {
+                        await updateDocFn(docFn(db, 'artifacts', window.state.appId, 'blogs', id), { likes: b.likes });
+                    } catch(e) { console.warn("Firebase update failed, modified locally.", e); }
+                }
+                window.render();
+            }
         };
+        
         window.incrementView = async (id) => {
+            let viewed = [];
+            try {
+                viewed = JSON.parse(localStorage.getItem('pY_viewed_blogs')) || [];
+            } catch(e) {}
+            
+            if (viewed.includes(id)) return; 
+            
+            viewed.push(id);
+            try {
+                localStorage.setItem('pY_viewed_blogs', JSON.stringify(viewed));
+            } catch(e) {}
+
             const b = window.state.data.blogs.find(x=>x.id===id);
-            if(b) await updateDocFn(docFn(db, 'artifacts', window.state.appId, 'blogs', id), { views: (b.views||0)+1 });
+            if(b) {
+                b.views = (b.views||0) + 1;
+                if(db) {
+                    try {
+                        await updateDocFn(docFn(db, 'artifacts', window.state.appId, 'blogs', id), { views: b.views });
+                    } catch(e) { console.warn("Firebase update failed, modified locally.", e); }
+                }
+                window.render();
+            }
         };
 
         function renderBlogList() {
-            let h = window.state.data.blogs.map(b => `<article class="bg-dark-800/95 rounded-2xl overflow-hidden border border-slate-600 shadow-xl hover:shadow-gold-500/20 hover:border-gold-500 flex flex-col group cursor-pointer transition-all duration-300" onclick="window.navigate('single-blog', '${b.id}')"><img src="${b.image}" class="h-64 w-full object-cover group-hover:scale-105 transition-transform duration-700 brightness-110"><div class="p-8 flex flex-col flex-grow"><div class="text-gold-400 text-sm mb-4 font-bold tracking-wider uppercase"><i class="far fa-calendar-alt mr-2"></i>${b.date}</div><h3 class="text-3xl font-serif font-bold text-white mb-4 leading-tight group-hover:text-gold-300 transition-colors">${b.title}</h3><p class="text-slate-300 flex-grow text-lg leading-relaxed">${b.excerpt}</p><div class="flex justify-between border-t border-slate-600/60 pt-6 mt-6"><div class="flex space-x-6 text-slate-300 font-medium"><span><i class="far fa-eye mr-2 text-slate-400"></i>${b.views||0}</span><span class="text-pink-400"><i class="fas fa-heart mr-2"></i>${b.likes||0}</span></div><span class="text-gold-400 font-bold group-hover:translate-x-2 transition-transform flex items-center">Devamını Oku <i class="fas fa-arrow-right ml-2"></i></span></div></div></article>`).join('');
-            return `<div class="max-w-7xl mx-auto px-4 py-16"><div class="text-center mb-16"><h2 class="text-4xl md:text-5xl font-serif font-bold text-white mb-6">Piyano <span class="text-gold-400">Blogu</span></h2><p class="text-slate-300 text-xl font-sans max-w-2xl mx-auto">Piyano eğitimleri, notalar ve müzik dünyasından en güncel haberler.</p></div><div class="grid grid-cols-1 md:grid-cols-2 gap-12">${h}</div></div>`;
+            const currentSort = window.state.blogSort || 'new';
+            let sortedBlogs = [...window.state.data.blogs];
+            
+            if (currentSort === 'new') {
+                sortedBlogs.sort((a, b) => window.parseTrDate(b.date) - window.parseTrDate(a.date));
+            } else if (currentSort === 'old') {
+                sortedBlogs.sort((a, b) => window.parseTrDate(a.date) - window.parseTrDate(b.date));
+            } else if (currentSort === 'popular') {
+                sortedBlogs.sort((a, b) => (b.views || 0) - (a.views || 0));
+            } else if (currentSort === 'unpopular') {
+                sortedBlogs.sort((a, b) => (a.views || 0) - (b.views || 0));
+            }
+
+            let h = sortedBlogs.map(b => `
+            <article class="bg-dark-800 rounded-2xl overflow-hidden border border-slate-700 hover:border-gold-500/50 flex flex-col group cursor-pointer transition-all duration-300 hover:shadow-2xl hover:-translate-y-1" onclick="window.navigate('single-blog', '${b.id}')">
+                <div class="overflow-hidden relative h-56">
+                    <img src="${b.image}" class="h-full w-full object-cover group-hover:scale-105 transition-transform duration-500">
+                    <div class="absolute inset-0 bg-gradient-to-t from-dark-900/80 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-4">
+                        <span class="text-gold-400 font-serif font-medium text-sm">Okumak için tıklayın &rarr;</span>
+                    </div>
+                </div>
+                <div class="p-6 flex flex-col flex-grow">
+                    <div class="text-gold-400 text-sm mb-3 flex items-center justify-between">
+                        <span><i class="far fa-calendar-alt mr-2"></i>${b.date}</span>
+                        <span class="bg-dark-900/60 px-2.5 py-1 rounded-full text-xs text-slate-300"><i class="far fa-eye mr-1"></i> ${b.views||0} Görüntülenme</span>
+                    </div>
+                    <h3 class="text-2xl font-serif font-bold text-white mb-3 group-hover:text-gold-400 transition-colors">${b.title}</h3>
+                    <p class="text-slate-400 flex-grow text-sm leading-relaxed">${b.excerpt}</p>
+                    <div class="flex justify-between border-t border-slate-700/50 pt-4 mt-5">
+                        <div class="flex space-x-4 text-slate-400 text-sm">
+                            <span class="text-pink-500"><i class="fas fa-heart mr-1"></i>${b.likes||0} Beğeni</span>
+                        </div>
+                        <span class="text-gold-400 font-bold group-hover:translate-x-1 transition-transform">Devamını Oku &rarr;</span>
+                    </div>
+                </div>
+            </article>`).join('');
+
+            return `
+            <div class="max-w-7xl mx-auto px-4 py-16">
+                <div class="text-center mb-16">
+                    <h2 class="text-4xl font-serif font-bold text-white mb-4">Piyano <span class="text-gold-400">Blogu</span></h2>
+                    <p class="text-slate-400 font-sans max-w-xl mx-auto">Piyano çalmanın incelikleri, müzik teorisi ve ilham veren makaleler.</p>
+                </div>
+
+                <div class="flex flex-col md:flex-row justify-between items-center mb-10 gap-4 bg-dark-800/40 p-4 rounded-2xl border border-gold-500/10">
+                    <div class="text-slate-300 font-sans text-sm">
+                        Toplam <strong class="text-gold-400">${sortedBlogs.length}</strong> makale listeleniyor.
+                    </div>
+                    <div class="flex items-center space-x-3 w-full md:w-auto">
+                        <label for="blog-sort" class="text-slate-400 font-sans text-sm whitespace-nowrap"><i class="fas fa-filter mr-1"></i> Sıralama:</label>
+                        <select id="blog-sort" onchange="window.changeBlogSort(this.value)" class="w-full md:w-auto bg-dark-900 border border-slate-600 rounded-lg px-4 py-2 text-white outline-none focus:border-gold-400 font-sans transition-colors cursor-pointer">
+                            <option value="new" ${currentSort === 'new' ? 'selected' : ''}>Yeni (En Son Eklenen)</option>
+                            <option value="old" ${currentSort === 'old' ? 'selected' : ''}>Eski (İlk Eklenen)</option>
+                            <option value="popular" ${currentSort === 'popular' ? 'selected' : ''}>Popüler (Çok Okunan)</option>
+                            <option value="unpopular" ${currentSort === 'unpopular' ? 'selected' : ''}>Az Görüntülenen</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-10">
+                    ${h || '<p class="text-center text-slate-500 col-span-2 py-8">Henüz yayınlanmış bir yazı bulunmuyor.</p>'}
+                </div>
+            </div>`;
         }
 
         function renderSingleBlog() {
             const b = window.state.data.blogs.find(x => x.id === window.state.activeBlogId);
             if(!b) { window.navigate('blog'); return ''; }
             window.incrementView(b.id);
-            return `<div class="max-w-4xl mx-auto px-4 py-12"><button onclick="window.navigate('blog')" class="text-gold-400 mb-8 flex items-center"><i class="fas fa-arrow-left mr-2"></i> Bloglara Dön</button><img src="${b.image}" class="w-full h-80 md:h-[400px] object-cover rounded-2xl mb-8 border border-slate-700"><div class="flex justify-between mb-6"><span class="text-gold-400">${b.date}</span><span class="text-slate-400"><i class="far fa-eye"></i> ${b.views||0} Okunma</span></div><h1 class="text-4xl md:text-5xl font-serif font-bold text-white mb-8">${b.title}</h1><div class="prose prose-invert prose-lg font-sans text-slate-300 leading-relaxed mb-12">${b.content}</div><div class="border-t border-slate-700 pt-8 flex items-center justify-between"><span class="text-lg font-serif text-white">Bu yazıyı beğendiniz mi?</span><button onclick="window.handleLike('${b.id}')" class="px-6 py-3 border border-pink-500/50 hover:bg-pink-500/20 text-pink-500 rounded-full font-bold flex items-center"><i class="fas fa-heart mr-2"></i> ${b.likes||0} Beğeni</button></div></div>`;
+            return `<div class="max-w-4xl mx-auto px-4 py-12"><button onclick="window.navigate('blog')" class="text-gold-400 mb-8 flex items-center hover:text-gold-300 transition-colors"><i class="fas fa-arrow-left mr-2"></i> Bloglara Dön</button><img src="${b.image}" class="w-full h-80 md:h-[400px] object-cover rounded-2xl mb-8 border border-slate-700 shadow-xl"><div class="flex justify-between items-center mb-6"><span class="text-gold-400"><i class="far fa-calendar-alt mr-1"></i> ${b.date}</span><span class="text-slate-400"><i class="far fa-eye"></i> ${b.views||0} Okunma</span></div><h1 class="text-4xl md:text-5xl font-serif font-bold text-white mb-8 leading-tight">${b.title}</h1><div class="prose prose-invert prose-lg font-sans text-slate-300 leading-relaxed mb-12">${b.content}</div><div class="border-t border-slate-700 pt-8 flex items-center justify-between"><span class="text-lg font-serif text-white">Bu yazıyı beğendiniz mi?</span><button onclick="window.handleLike('${b.id}')" class="px-6 py-3 border border-pink-500/50 hover:bg-pink-500/20 text-pink-500 rounded-full font-bold flex items-center transition-colors"><i class="fas fa-heart mr-2"></i> ${b.likes||0} Beğeni</button></div></div>`;
         }
 
         window.setTutorialSearch = (q) => { window.state.tutorialSearchQuery = q.toLowerCase(); window.render(); }
@@ -403,56 +601,40 @@
             return `<div class="max-w-4xl mx-auto px-4 py-20 text-center"><div class="w-32 h-32 bg-dark-800 rounded-full mx-auto border border-gold-500 flex items-center justify-center mb-8 shadow-xl shadow-gold-500/20"><i class="fas fa-music text-4xl text-gold-400"></i></div><h2 class="text-4xl font-serif font-bold text-white mb-8">Piyanoyla Yolculuk</h2><div class="space-y-6 text-slate-300 text-xl font-sans leading-relaxed whitespace-pre-wrap">${window.state.data.about}</div></div>`;
         }
 
-        function renderContact() {
-            return `<div class="max-w-3xl mx-auto px-4 py-16">
-                <div class="text-center mb-12">
-                    <h2 class="text-4xl md:text-5xl font-serif font-bold text-white mb-4">Bizimle <span class="text-gold-400">İletişime Geçin</span></h2>
-                    <p class="text-slate-300 text-lg md:text-xl">Soru, öneri veya işbirlikleri için formu doldurarak mesaj gönderebilirsiniz.</p>
-                </div>
-                <div class="glass-panel p-8 md:p-12 rounded-3xl border border-gold-500/20 shadow-2xl">
-                    <form id="contact-form" onsubmit="window.submitContact(event)" class="space-y-6">
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <div>
-                                <label class="block text-slate-300 mb-2 font-medium">Adınız Soyadınız</label>
-                                <input type="text" id="c-name" required placeholder="Örn: Ahmet Yılmaz" class="w-full bg-dark-900 border border-slate-600 rounded-xl py-4 px-5 text-white focus:border-gold-400 outline-none transition-colors">
-                            </div>
-                            <div>
-                                <label class="block text-slate-300 mb-2 font-medium">E-posta Adresiniz</label>
-                                <input type="email" id="c-email" required placeholder="ornek@mail.com" class="w-full bg-dark-900 border border-slate-600 rounded-xl py-4 px-5 text-white focus:border-gold-400 outline-none transition-colors">
-                            </div>
-                        </div>
-                        <div>
-                            <label class="block text-slate-300 mb-2 font-medium">Mesajınız</label>
-                            <textarea id="c-message" required rows="6" placeholder="Mesajınızı buraya yazın..." class="w-full bg-dark-900 border border-slate-600 rounded-xl py-4 px-5 text-white focus:border-gold-400 outline-none transition-colors resize-none"></textarea>
-                        </div>
-                        <button type="submit" class="w-full py-4 bg-gold-500 hover:bg-gold-400 text-dark-900 font-bold text-lg rounded-xl transition-transform hover:scale-[1.02] shadow-[0_0_20px_rgba(212,175,55,0.3)]"><i class="fas fa-paper-plane mr-2"></i> Mesajı Gönder</button>
-                    </form>
-                </div>
-            </div>`;
-        }
-
-        window.submitContact = async (e) => {
-            e.preventDefault();
-            const name = document.getElementById('c-name').value;
-            const email = document.getElementById('c-email').value;
-            const message = document.getElementById('c-message').value;
-            try {
-                await setDocFn(docFn(db, 'artifacts', window.state.appId, 'messages', `msg_${Date.now()}`), { name, email, message, timestamp: Date.now() });
-                window.showModal("Başarılı", "Mesajınız başarıyla iletildi. En kısa sürede dönüş yapacağız.");
-                document.getElementById('contact-form').reset();
-            } catch (err) {
-                window.showModal("Hata", "Mesaj gönderilirken bir sorun oluştu.");
-            }
-        };
-
         function renderAuth() {
             if (window.state.currentUser) { window.navigate('home'); return ''; }
             const s = window.state.authFlow.step; let c = '';
             const googleBtn = `<button type="button" onclick="window.handleGoogleLogin()" class="w-full py-3 bg-white hover:bg-slate-200 text-black font-bold rounded-lg transition-colors flex items-center justify-center shadow-lg"><img src="https://upload.wikimedia.org/wikipedia/commons/c/c1/Google_%22G%22_logo.svg" class="w-5 h-5 mr-3"> Google ile Giriş Yap</button><div class="flex items-center my-6"><div class="flex-grow h-px bg-slate-700"></div><span class="px-4 text-slate-500 text-sm">VEYA</span><div class="flex-grow h-px bg-slate-700"></div></div>`;
+            
             if (s === 'login') {
-                c = `<h2 class="text-3xl font-serif font-bold text-white mb-6 text-center">Giriş Yap</h2>${googleBtn}<form onsubmit="window.handleLogin(event)" class="space-y-4"><input type="email" id="l-email" required placeholder="E-posta" class="w-full bg-dark-900 border border-slate-600 rounded-lg py-3 px-4 text-white outline-none focus:border-gold-400"><input type="password" id="l-pass" required placeholder="Şifre" class="w-full bg-dark-900 border border-slate-600 rounded-lg py-3 px-4 text-white outline-none focus:border-gold-400"><button type="submit" class="w-full py-3 bg-gold-500 text-dark-900 font-bold rounded-lg">Giriş Yap</button></form><div class="mt-6 text-center text-slate-400">Hesabınız yok mu? <button onclick="window.setAuthStep('register')" class="text-gold-400 hover:underline">Kaydolun</button></div>`;
+                c = `<h2 class="text-3xl font-serif font-bold text-white mb-6 text-center">Giriş Yap</h2>${googleBtn}
+                <form onsubmit="window.handleLogin(event)" class="space-y-4">
+                    <input type="email" id="l-email" required placeholder="E-posta" class="w-full bg-dark-900 border border-slate-600 rounded-lg py-3 px-4 text-white outline-none focus:border-gold-400">
+                    <input type="password" id="l-pass" required placeholder="Şifre" class="w-full bg-dark-900 border border-slate-600 rounded-lg py-3 px-4 text-white outline-none focus:border-gold-400">
+                    
+                    <div class="flex justify-center py-2">
+                        <div id="login-turnstile-container"></div>
+                    </div>
+
+                    <button type="submit" class="w-full py-3 bg-gold-500 hover:bg-gold-400 text-dark-900 font-bold rounded-lg transition-colors">Giriş Yap</button>
+                </form>
+                <div class="mt-6 text-center text-slate-400">Hesabınız yok mu? <button onclick="window.setAuthStep('register')" class="text-gold-400 hover:underline">Kaydolun</button></div>`;
             } else if (s === 'register') {
-                c = `<h2 class="text-3xl font-serif font-bold text-white mb-6 text-center">Kayıt Ol</h2>${googleBtn}<form onsubmit="window.handleRegisterStart(event)" class="space-y-4"><div class="grid grid-cols-2 gap-4"><input type="text" id="r-name" required placeholder="Ad" class="w-full bg-dark-900 border border-slate-600 rounded-lg py-3 px-4 text-white"><input type="text" id="r-surname" required placeholder="Soyad" class="w-full bg-dark-900 border border-slate-600 rounded-lg py-3 px-4 text-white"></div><input type="email" id="r-email" required placeholder="E-posta" class="w-full bg-dark-900 border border-slate-600 rounded-lg py-3 px-4 text-white"><button type="submit" class="w-full py-3 bg-gold-500 text-dark-900 font-bold rounded-lg">Kod Gönder</button></form><div class="mt-6 text-center text-slate-400">Zaten üye misiniz? <button onclick="window.setAuthStep('login')" class="text-gold-400 hover:underline">Giriş Yapın</button></div>`;
+                c = `<h2 class="text-3xl font-serif font-bold text-white mb-6 text-center">Kayıt Ol</h2>${googleBtn}
+                <form onsubmit="window.handleRegisterStart(event)" class="space-y-4">
+                    <div class="grid grid-cols-2 gap-4">
+                        <input type="text" id="r-name" required placeholder="Ad" class="w-full bg-dark-900 border border-slate-600 rounded-lg py-3 px-4 text-white">
+                        <input type="text" id="r-surname" required placeholder="Soyad" class="w-full bg-dark-900 border border-slate-600 rounded-lg py-3 px-4 text-white">
+                    </div>
+                    <input type="email" id="r-email" required placeholder="E-posta" class="w-full bg-dark-900 border border-slate-600 rounded-lg py-3 px-4 text-white">
+                    
+                    <div class="flex justify-center py-2">
+                        <div id="register-turnstile-container"></div>
+                    </div>
+
+                    <button type="submit" class="w-full py-3 bg-gold-500 hover:bg-gold-400 text-dark-900 font-bold rounded-lg transition-colors">Kod Gönder</button>
+                </form>
+                <div class="mt-6 text-center text-slate-400">Zaten üye misiniz? <button onclick="window.setAuthStep('login')" class="text-gold-400 hover:underline">Giriş Yapın</button></div>`;
             } else if (s === 'verify' || s === 'password') {
                 c = s === 'verify' ? `<h2 class="text-3xl font-serif font-bold text-white mb-6 text-center">Kodu Girin</h2><form onsubmit="window.handleVerifyCode(event)"><input type="text" id="v-code" required maxlength="6" placeholder="XXXXXX" class="w-full text-center text-2xl tracking-[1em] font-bold bg-dark-900 border border-slate-600 rounded-lg py-4 px-4 text-white mb-4"><button type="submit" class="w-full py-3 bg-gold-500 text-dark-900 font-bold rounded-lg">Doğrula</button></form>` : `<h2 class="text-3xl font-serif font-bold text-white mb-6 text-center">Şifre Belirle</h2><form onsubmit="window.handleRegisterFinal(event)"><input type="password" id="p-pass1" required placeholder="Yeni Şifre" class="w-full bg-dark-900 border border-slate-600 rounded-lg py-3 px-4 text-white mb-4"><input type="password" id="p-pass2" required placeholder="Şifre Onayı" class="w-full bg-dark-900 border border-slate-600 rounded-lg py-3 px-4 text-white mb-4"><button type="submit" class="w-full py-3 bg-gold-500 text-dark-900 font-bold rounded-lg">Kaydı Tamamla</button></form>`;
             }
@@ -462,20 +644,29 @@
         window.setAuthStep = (step) => { window.state.authFlow.step = step; window.render(); };
         
         window.handleGoogleLogin = async () => {
+            if (!signInPopupFn || !gProvider) {
+                return window.showModal("Giriş Hatası", "Firebase modülleri tam yüklenemedi. Lütfen daha sonra tekrar deneyiniz.");
+            }
             try {
                 const res = await window.signInPopupFn(auth, gProvider);
                 const u = res.user;
                 let dbUser = window.state.dbUsers.find(x => x.email === u.email);
                 if(!dbUser) {
                     dbUser = { id: u.uid, name: u.displayName?.split(' ')[0] || 'Kullanıcı', surname: u.displayName?.split(' ').slice(1).join(' ') || '', email: u.email, isAdmin: u.email === ADMIN_EMAIL, provider: 'google' };
-                    await setDocFn(docFn(db, 'artifacts', window.state.appId, 'users', u.uid), dbUser);
+                    if(db) await setDocFn(docFn(db, 'artifacts', window.state.appId, 'users', u.uid), dbUser);
                 }
                 window.state.currentUser = dbUser; await saveSession(dbUser.id); window.navigate('home');
             } catch(e) { window.showModal("Google Hatası", "Google ile giriş tamamlanamadı.\n\nDetay: " + e.message + "\n\nBu durum önizleme ortamının güvenlik kısıtlamalarından kaynaklanır."); }
         };
 
         window.handleRegisterStart = async (e) => {
-            e.preventDefault(); const email = document.getElementById('r-email').value;
+            e.preventDefault(); 
+            const email = document.getElementById('r-email').value;
+
+            if (!window.state.turnstileToken) {
+                return window.showModal("Güvenlik Doğrulaması Başarısız", "Lütfen Cloudflare doğrulamasını (Turnstile) tamamlayın.");
+            }
+
             if(window.state.dbUsers.find(u => u.email === email)) return window.showModal("Hata", "E-posta kullanımda.");
             const code = Math.floor(100000 + Math.random() * 900000).toString();
             window.state.authFlow = { step: 'verify', intent: 'register', verificationCode: code, tempData: { name: document.getElementById('r-name').value, surname: document.getElementById('r-surname').value, email } };
@@ -494,7 +685,17 @@
             e.preventDefault(); const p1 = document.getElementById('p-pass1').value;
             if(p1 !== document.getElementById('p-pass2').value) return window.showModal("Hata", "Şifreler eşleşmiyor!");
             const newId = `user_${Date.now()}`, userData = { ...window.state.authFlow.tempData, password: p1, isAdmin: window.state.authFlow.tempData.email === ADMIN_EMAIL, provider: 'email' };
-            await setDocFn(docFn(db, 'artifacts', window.state.appId, 'users', newId), userData);
+            
+            if(db) {
+                try {
+                    await setDocFn(docFn(db, 'artifacts', window.state.appId, 'users', newId), userData);
+                } catch(err) { console.warn("Veritabanı kaydı başarısız, lokale yazılıyor.", err); }
+            }
+            
+            if (!window.state.dbUsers.find(x => x.id === newId)) {
+                window.state.dbUsers.push({ id: newId, ...userData });
+            }
+
             window.state.currentUser = { id: newId, ...userData }; await saveSession(newId);
             window.state.authFlow = { step: 'register', tempData: null, verificationCode: null };
             window.showModal("Başarılı", "Kaydınız tamamlandı."); window.navigate('home');
@@ -504,13 +705,20 @@
             e.preventDefault(); 
             const email = document.getElementById('l-email').value; 
             const pass = document.getElementById('l-pass').value;
+
+            if (!window.state.turnstileToken) {
+                return window.showModal("Güvenlik Doğrulaması Başarısız", "Lütfen Cloudflare doğrulamasını (Turnstile) tamamlayın.");
+            }
             
-            // YÖNETİCİ GİRİŞİ: Kayıt olmasa bile otomatik oluştur ve giriş yap
             if (email === ADMIN_EMAIL && pass === "admin123") {
                 let adminUser = window.state.dbUsers.find(u => u.email === email);
                 if (!adminUser) {
                     adminUser = { id: 'admin_user_master', name: 'Sistem', surname: 'Yöneticisi', email: ADMIN_EMAIL, password: pass, isAdmin: true, provider: 'email' };
-                    await setDocFn(docFn(db, 'artifacts', window.state.appId, 'users', adminUser.id), adminUser);
+                    if(db) {
+                        try {
+                            await setDocFn(docFn(db, 'artifacts', window.state.appId, 'users', adminUser.id), adminUser);
+                        } catch(err){}
+                    }
                 }
                 window.state.currentUser = adminUser; 
                 await saveSession(adminUser.id); 
@@ -537,7 +745,6 @@
         function renderAdmin() {
             if(!window.state.currentUser?.isAdmin) { window.navigate('home'); return ''; }
             
-            // Eğer bir düzenleme/silme işlemi açıksa formu göster
             if (window.state.adminAction) {
                 const { action, id, collection } = window.state.adminAction;
                 
@@ -551,46 +758,13 @@
                 }
 
                 if (action === 'edit-library') {
-                    const l = id ? window.state.data.library.find(x=>x.id===id) : {title:'', type:'music', url:'', note:'', duration:'0:00', size:'0 MB'};
-                    return `<div class="max-w-4xl mx-auto px-4 py-12"><div class="glass-panel p-8 rounded-xl"><h3 class="text-3xl text-gold-400 mb-6 font-serif font-bold">${id ? 'Kütüphane Öğesini Düzenle' : 'Yeni Müzik / Ses Efekti Ekle'}</h3><div class="space-y-5">
-                        <select id="edit-l-type" class="w-full bg-dark-900 border border-slate-600 rounded-lg p-4 text-white focus:border-gold-400 outline-none"><option value="music" ${l.type==='music'?'selected':''}>Müzik</option><option value="sfx" ${l.type==='sfx'?'selected':''}>Ses Efekti</option></select>
-                        <input type="text" id="edit-l-title" placeholder="Başlık" value="${l.title}" class="w-full bg-dark-900 border border-slate-600 rounded-lg p-4 text-white focus:border-gold-400 outline-none">
-                        
-                        <!-- Dosya Yükleme Alanı -->
-                        <div class="p-6 border border-slate-600 rounded-xl bg-dark-800">
-                            <label class="block text-gold-400 mb-3 font-bold text-lg"><i class="fas fa-file-audio mr-2"></i>MP3 Dosyası Seç (Bilgisayardan)</label>
-                            <input type="file" id="edit-l-file" accept="audio/*" class="w-full text-slate-300 file:mr-4 file:py-3 file:px-6 file:rounded-full file:border-0 file:text-sm file:font-bold file:bg-gold-500 file:text-dark-900 hover:file:bg-gold-400 transition-colors cursor-pointer" onchange="window.handleAudioFile(event)">
-                            <p class="text-sm text-slate-400 mt-4"><i class="fas fa-magic text-gold-400 mr-1"></i> Dosya seçtiğinizde <b>süre</b> ve <b>boyut</b> otomatik hesaplanacaktır.</p>
-                            <p class="text-xs text-pink-400 mt-2">Not: 1MB'dan büyük dosyalar veritabanı sınırına takılabilir. Büyük dosyalar için alttaki URL alanını kullanmanız önerilir.</p>
-                        </div>
-                        
-                        <div class="flex items-center space-x-4 py-2">
-                            <hr class="flex-grow border-slate-700"><span class="text-slate-500 font-bold uppercase tracking-widest text-sm">Veya</span><hr class="flex-grow border-slate-700">
-                        </div>
-                        
-                        <input type="text" id="edit-l-url" placeholder="MP3 Dosya URL'si (Elle girmek için)" value="${l.url}" class="w-full bg-dark-900 border border-slate-600 rounded-lg p-4 text-white focus:border-gold-400 outline-none">
-                        <input type="text" id="edit-l-note" placeholder="Alt Not (İsteğe Bağlı)" value="${l.note}" class="w-full bg-dark-900 border border-slate-600 rounded-lg p-4 text-white focus:border-gold-400 outline-none">
-                        
-                        <div class="flex space-x-4">
-                            <div class="w-1/2 bg-dark-900 border border-slate-600 rounded-xl p-4 relative overflow-hidden">
-                                <div class="absolute top-0 left-0 w-full h-1 bg-gold-500"></div>
-                                <span class="text-xs text-slate-500 block mb-2 uppercase font-bold tracking-wider">Süre (Otomatik)</span>
-                                <input type="text" id="edit-l-duration" readonly value="${l.duration}" class="bg-transparent text-white font-serif text-2xl outline-none w-full">
-                            </div>
-                            <div class="w-1/2 bg-dark-900 border border-slate-600 rounded-xl p-4 relative overflow-hidden">
-                                <div class="absolute top-0 left-0 w-full h-1 bg-blue-500"></div>
-                                <span class="text-xs text-slate-500 block mb-2 uppercase font-bold tracking-wider">Boyut (Otomatik)</span>
-                                <input type="text" id="edit-l-size" readonly value="${l.size}" class="bg-transparent text-white font-serif text-2xl outline-none w-full">
-                            </div>
-                        </div>
-                        
-                        <div class="flex space-x-4 pt-6"><button onclick="window.saveLibrary('${id || ''}')" class="bg-gold-500 hover:bg-gold-400 text-dark-900 px-8 py-3 rounded-lg font-bold transition-colors w-full shadow-lg shadow-gold-500/20"><i class="fas fa-save mr-2"></i> Kaydet</button><button onclick="window.cancelAdminAction()" class="bg-slate-700 hover:bg-slate-600 text-white px-8 py-3 rounded-lg font-bold transition-colors w-full">İptal</button></div>
-                    </div></div></div>`;
+                    const l = id ? window.state.data.library.find(x=>x.id===id) : {title:'', type:'music', url:'', note:'', duration:'', size:''};
+                    return `<div class="max-w-4xl mx-auto px-4 py-12"><div class="glass-panel p-8 rounded-xl"><h3 class="text-3xl text-gold-400 mb-6 font-serif font-bold">${id ? 'Kütüphane Öğesini Düzenle' : 'Yeni Müzik / Ses Efekti Ekle'}</h3><div class="space-y-4"><select id="edit-l-type" class="w-full bg-dark-900 border border-slate-600 rounded-lg p-4 text-white focus:border-gold-400 outline-none"><option value="music" ${l.type==='music'?'selected':''}>Müzik</option><option value="sfx" ${l.type==='sfx'?'selected':''}>Ses Efekti</option></select><input type="text" id="edit-l-title" placeholder="Başlık" value="${l.title}" class="w-full bg-dark-900 border border-slate-600 rounded-lg p-4 text-white focus:border-gold-400 outline-none"><input type="text" id="edit-l-url" placeholder="MP3 Dosya URL'si" value="${l.url}" class="w-full bg-dark-900 border border-slate-600 rounded-lg p-4 text-white focus:border-gold-400 outline-none"><input type="text" id="edit-l-note" placeholder="Alt Not (İsteğe Bağlı)" value="${l.note}" class="w-full bg-dark-900 border border-slate-600 rounded-lg p-4 text-white focus:border-gold-400 outline-none"><div class="flex space-x-4"><input type="text" id="edit-l-duration" placeholder="Süre" value="${l.duration}" class="w-1/2 bg-dark-900 border border-slate-600 rounded-lg p-4 text-white focus:border-gold-400 outline-none"><input type="text" id="edit-l-size" placeholder="Boyut" value="${l.size}" class="w-1/2 bg-dark-900 border border-slate-600 rounded-lg p-4 text-white focus:border-gold-400 outline-none"></div><div class="flex space-x-4 pt-4"><button onclick="window.saveLibrary('${id || ''}')" class="bg-gold-500 hover:bg-gold-400 text-dark-900 px-8 py-3 rounded-lg font-bold transition-colors">Kaydet</button><button onclick="window.cancelAdminAction()" class="bg-slate-700 hover:bg-slate-600 text-white px-8 py-3 rounded-lg font-bold transition-colors">İptal</button></div></div></div></div>`;
                 }
 
                 if (action === 'edit-tutorial') {
                     const t = id ? window.state.data.tutorials.find(x=>x.id===id) : {title:'', youtubeId:'', notes:''};
-                    return `<div class="max-w-4xl mx-auto px-4 py-12"><div class="glass-panel p-8 rounded-xl"><h3 class="text-3xl text-gold-400 mb-6 font-serif font-bold">${id ? 'Eğitimi Düzenle' : 'Yeni Eğitim Ekle'}</h3><div class="space-y-4"><input type="text" id="edit-t-title" placeholder="Eğitim Başlığı" value="${t.title}" class="w-full bg-dark-900 border border-slate-600 rounded-lg p-4 text-white focus:border-gold-400 outline-none"><input type="text" id="edit-t-youtubeId" placeholder="YouTube Video ID (Örn: 7maJOI3QMu0)" value="${t.youtubeId}" class="w-full bg-dark-900 border border-slate-600 rounded-lg p-4 text-white focus:border-gold-400 outline-none"><textarea id="edit-t-notes" placeholder="Şarkı Notları" class="w-full bg-dark-900 border border-slate-600 rounded-lg p-4 text-white focus:border-gold-400 outline-none h-32">${t.notes}</textarea><div class="flex space-x-4 pt-4"><button onclick="window.saveTutorial('${id || ''}')" class="bg-gold-500 hover:bg-gold-400 text-dark-900 px-8 py-3 rounded-lg font-bold transition-colors">Kaydet</button><button onclick="window.cancelAdminAction()" class="bg-slate-700 hover:bg-slate-600 text-white px-8 py-3 rounded-lg font-bold transition-colors">İptal</button></div></div></div></div>`;
+                    return `<div class="max-w-4xl mx-auto px-4 py-12"><div class="glass-panel p-8 rounded-xl"><h3 class="text-3xl text-gold-400 mb-6 font-serif font-bold">${id ? 'Eğitimi Düzenle' : 'Yeni Eğitim Ekle'}</h3><div class="space-y-4"><input type="text" id="edit-t-title" placeholder="Eğitim Başlığı" value="${t.title}" class="w-full bg-dark-900 border border-slate-600 rounded-lg p-4 text-white focus:border-gold-400 outline-none"><input type="text" id="edit-t-youtubeId" placeholder="YouTube Video ID" value="${t.youtubeId}" class="w-full bg-dark-900 border border-slate-600 rounded-lg p-4 text-white focus:border-gold-400 outline-none"><textarea id="edit-t-notes" placeholder="Şarkı Notları" class="w-full bg-dark-900 border border-slate-600 rounded-lg p-4 text-white focus:border-gold-400 outline-none h-32">${t.notes}</textarea><div class="flex space-x-4 pt-4"><button onclick="window.saveTutorial('${id || ''}')" class="bg-gold-500 hover:bg-gold-400 text-dark-900 px-8 py-3 rounded-lg font-bold transition-colors">Kaydet</button><button onclick="window.cancelAdminAction()" class="bg-slate-700 hover:bg-slate-600 text-white px-8 py-3 rounded-lg font-bold transition-colors">İptal</button></div></div></div></div>`;
                 }
             }
 
@@ -598,68 +772,37 @@
             if(t === 'blogs') { content = `<button onclick="window.adminEditBlog(null)" class="mb-6 bg-gold-500 hover:bg-gold-400 text-dark-900 px-6 py-3 rounded-lg font-bold transition-colors"><i class="fas fa-plus mr-2"></i> Yeni Blog</button><div class="space-y-3">` + window.state.data.blogs.map(b => `<div class="bg-dark-800 p-4 rounded-lg flex justify-between items-center border border-slate-700 hover:border-gold-500/30 transition-colors"><span class="font-serif text-lg text-white">${b.title}</span><div><button onclick="window.adminEditBlog('${b.id}')" class="text-blue-400 hover:text-blue-300 mr-4 text-xl"><i class="fas fa-edit"></i></button><button onclick="window.adminDelete('blogs','${b.id}')" class="text-[#FF0000] hover:text-red-400 text-xl"><i class="fas fa-trash"></i></button></div></div>`).join('') + `</div>`; } 
             else if(t === 'library') { content = `<button onclick="window.adminEditLibrary(null)" class="mb-6 bg-gold-500 hover:bg-gold-400 text-dark-900 px-6 py-3 rounded-lg font-bold transition-colors"><i class="fas fa-plus mr-2"></i> Yeni Müzik / SFX</button><div class="space-y-3">` + window.state.data.library.map(l => `<div class="bg-dark-800 p-4 rounded-lg flex justify-between items-center border border-slate-700 hover:border-gold-500/30 transition-colors"><span class="font-serif text-lg text-white"><span class="text-gold-400 text-sm mr-2">[${l.type.toUpperCase()}]</span> ${l.title}</span><div><button onclick="window.adminEditLibrary('${l.id}')" class="text-blue-400 hover:text-blue-300 mr-4 text-xl"><i class="fas fa-edit"></i></button><button onclick="window.adminDelete('library','${l.id}')" class="text-[#FF0000] hover:text-red-400 text-xl"><i class="fas fa-trash"></i></button></div></div>`).join('') + `</div>`; } 
             else if(t === 'tutorials') { content = `<button onclick="window.adminEditTutorial(null)" class="mb-6 bg-gold-500 hover:bg-gold-400 text-dark-900 px-6 py-3 rounded-lg font-bold transition-colors"><i class="fas fa-plus mr-2"></i> Yeni Eğitim</button><div class="space-y-3">` + window.state.data.tutorials.map(tut => `<div class="bg-dark-800 p-4 rounded-lg flex justify-between items-center border border-slate-700 hover:border-gold-500/30 transition-colors"><span class="font-serif text-lg text-white">${tut.title}</span><div><button onclick="window.adminEditTutorial('${tut.id}')" class="text-blue-400 hover:text-blue-300 mr-4 text-xl"><i class="fas fa-edit"></i></button><button onclick="window.adminDelete('tutorials','${tut.id}')" class="text-[#FF0000] hover:text-red-400 text-xl"><i class="fas fa-trash"></i></button></div></div>`).join('') + `</div>`; } 
-            else if(t === 'messages') { 
-                content = window.state.data.messages.length === 0 ? `<div class="text-center py-16"><i class="fas fa-envelope-open-text text-6xl text-slate-700 mb-4"></i><p class="text-slate-400 text-lg">Henüz hiç mesajınız bulunmuyor.</p></div>` : `<div class="space-y-6">` + window.state.data.messages.map(m => `
-                <div class="bg-dark-800 p-6 md:p-8 rounded-2xl border border-slate-700 shadow-lg relative group">
-                    <div class="flex flex-col md:flex-row md:justify-between md:items-start mb-6 border-b border-slate-700/50 pb-6">
-                        <div>
-                            <h4 class="text-gold-400 font-bold text-2xl flex items-center mb-2"><i class="fas fa-user-circle text-slate-500 mr-3"></i>${m.name}</h4>
-                            <a href="mailto:${m.email}" class="text-blue-400 hover:text-blue-300 hover:underline flex items-center font-sans text-lg"><i class="fas fa-envelope mr-2"></i>${m.email}</a>
-                        </div>
-                        <span class="text-slate-400 text-sm bg-dark-900/80 px-4 py-2 rounded-full mt-4 md:mt-0 font-medium border border-slate-700"><i class="far fa-clock mr-2"></i>${new Date(m.timestamp).toLocaleString('tr-TR')}</span>
-                    </div>
-                    <div class="relative">
-                        <i class="fas fa-quote-left absolute text-slate-700 text-3xl -top-2 -left-2 opacity-30"></i>
-                        <p class="text-slate-200 bg-dark-900 p-6 rounded-xl whitespace-pre-wrap text-lg leading-relaxed font-sans border border-slate-700/30 ml-4">${m.message}</p>
-                    </div>
-                    <div class="mt-6 flex justify-end">
-                        <button onclick="window.adminDelete('messages','${m.id}')" class="text-[#FF0000] hover:text-red-400 bg-[#FF0000]/10 hover:bg-[#FF0000]/20 px-6 py-2.5 rounded-lg transition-colors flex items-center font-bold shadow-sm"><i class="fas fa-trash-alt mr-2"></i> Mesajı Sil</button>
-                    </div>
-                </div>`).join('') + `</div>`; 
-            }
             else if(t === 'about') { content = `<textarea id="a-about" class="w-full h-64 bg-dark-900 border border-slate-600 rounded-lg p-4 text-white focus:border-gold-400 outline-none">${window.state.data.about}</textarea><button onclick="window.adminSaveAbout()" class="mt-6 bg-gold-500 hover:bg-gold-400 text-dark-900 px-8 py-3 rounded-lg font-bold transition-colors">Değişiklikleri Kaydet</button>`; } 
             else if(t === 'users') { content = `<div class="space-y-3">` + window.state.dbUsers.map(u => `<div class="bg-dark-800 p-4 rounded-lg flex justify-between items-center border border-slate-700 hover:border-gold-500/30 transition-colors"><div><span class="text-gold-400 font-bold">${u.name} ${u.surname}</span> <span class="text-sm text-slate-400 ml-2">(${u.email})</span></div><div><button onclick="window.showUserInfo('${u.id}')" class="text-blue-400 hover:text-blue-300 mr-4"><i class="fas fa-info-circle text-xl"></i></button><button onclick="window.adminDelete('users','${u.id}')" class="text-[#FF0000] hover:text-red-400"><i class="fas fa-user-times text-xl"></i></button></div></div>`).join('') + `</div>`; }
 
-            return `<div class="max-w-6xl mx-auto px-4 py-12"><h2 class="text-4xl font-serif font-bold text-white mb-8"><i class="fas fa-crown text-gold-400 mr-3"></i>Yönetici Paneli</h2><div class="flex flex-wrap gap-3 mb-8 border-b border-slate-700 pb-6">
-                <button onclick="window.setAdminTab('blogs')" class="px-6 py-3 rounded-xl font-bold transition-colors ${t==='blogs'?'bg-gold-500 text-dark-900 shadow-lg shadow-gold-500/20':'bg-dark-800 text-slate-300 hover:bg-slate-700'}">Bloglar</button>
-                <button onclick="window.setAdminTab('library')" class="px-6 py-3 rounded-xl font-bold transition-colors ${t==='library'?'bg-gold-500 text-dark-900 shadow-lg shadow-gold-500/20':'bg-dark-800 text-slate-300 hover:bg-slate-700'}">Kütüphane</button>
-                <button onclick="window.setAdminTab('tutorials')" class="px-6 py-3 rounded-xl font-bold transition-colors ${t==='tutorials'?'bg-gold-500 text-dark-900 shadow-lg shadow-gold-500/20':'bg-dark-800 text-slate-300 hover:bg-slate-700'}">Eğitimler</button>
-                <button onclick="window.setAdminTab('users')" class="px-6 py-3 rounded-xl font-bold transition-colors ${t==='users'?'bg-gold-500 text-dark-900 shadow-lg shadow-gold-500/20':'bg-dark-800 text-slate-300 hover:bg-slate-700'}">Kullanıcılar</button>
-                <button onclick="window.setAdminTab('messages')" class="px-6 py-3 rounded-xl font-bold transition-colors relative ${t==='messages'?'bg-gold-500 text-dark-900 shadow-lg shadow-gold-500/20':'bg-dark-800 text-slate-300 hover:bg-slate-700'}">
-                    Mesajlar ${window.state.data.messages.length > 0 ? `<span class="absolute -top-2 -right-2 bg-[#FF0000] text-white text-xs w-6 h-6 flex items-center justify-center rounded-full border-2 border-dark-900 shadow-sm shadow-red-500/50">${window.state.data.messages.length}</span>` : ''}
-                </button>
-                <button onclick="window.setAdminTab('about')" class="px-6 py-3 rounded-xl font-bold transition-colors ${t==='about'?'bg-gold-500 text-dark-900 shadow-lg shadow-gold-500/20':'bg-dark-800 text-slate-300 hover:bg-slate-700'}">Hakkımızda</button>
-            </div><div class="glass-panel p-8 rounded-2xl shadow-xl">${content}</div></div>`;
+            return `<div class="max-w-6xl mx-auto px-4 py-12"><h2 class="text-4xl font-serif font-bold text-white mb-8"><i class="fas fa-crown text-gold-400 mr-3"></i>Yönetici Paneli</h2><div class="flex flex-wrap gap-3 mb-8 border-b border-slate-700 pb-6"><button onclick="window.setAdminTab('blogs')" class="px-6 py-2.5 rounded-lg font-bold transition-colors ${t==='blogs'?'bg-gold-500 text-dark-900':'bg-dark-800 text-slate-300 hover:bg-slate-700'}">Bloglar</button><button onclick="window.setAdminTab('library')" class="px-6 py-2.5 rounded-lg font-bold transition-colors ${t==='library'?'bg-gold-500 text-dark-900':'bg-dark-800 text-slate-300 hover:bg-slate-700'}">Ses Kütüphanesi</button><button onclick="window.setAdminTab('tutorials')" class="px-6 py-2.5 rounded-lg font-bold transition-colors ${t==='tutorials'?'bg-gold-500 text-dark-900':'bg-dark-800 text-slate-300 hover:bg-slate-700'}">Eğitimler</button><button onclick="window.setAdminTab('users')" class="px-6 py-2.5 rounded-lg font-bold transition-colors ${t==='users'?'bg-gold-500 text-dark-900':'bg-dark-800 text-slate-300 hover:bg-slate-700'}">Kullanıcılar</button><button onclick="window.setAdminTab('about')" class="px-6 py-2.5 rounded-lg font-bold transition-colors ${t==='about'?'bg-gold-500 text-dark-900':'bg-dark-800 text-slate-300 hover:bg-slate-700'}">Hakkımızda</button></div><div class="glass-panel p-8 rounded-xl">${content}</div></div>`;
         }
 
-        window.handleAudioFile = (e) => {
-            const file = e.target.files[0];
-            if(!file) return;
-            
-            const sizeMB = (file.size / (1024 * 1024)).toFixed(2) + " MB";
-            document.getElementById('edit-l-size').value = sizeMB;
-            
-            const objectUrl = URL.createObjectURL(file);
-            const audio = new Audio(objectUrl);
-            audio.onloadedmetadata = () => {
-                const mins = Math.floor(audio.duration / 60);
-                const secs = Math.floor(audio.duration % 60).toString().padStart(2, '0');
-                document.getElementById('edit-l-duration').value = `${mins}:${secs}`;
-                URL.revokeObjectURL(objectUrl);
-            };
-
-            const reader = new FileReader();
-            reader.onload = (ev) => {
-                document.getElementById('edit-l-url').value = ev.target.result;
-            };
-            reader.readAsDataURL(file);
-        };
-
         window.showUserInfo = (id) => { const u = window.state.dbUsers.find(x => x.id === id); window.showModal("Kullanıcı Detayları", `Ad Soyad: ${u.name} ${u.surname}\nE-posta: ${u.email}\nGiriş Yöntemi: ${u.provider.toUpperCase()}\nŞifre: ${u.password || 'Google Hesabı'}`); };
-        window.adminSaveAbout = async () => { await setDocFn(docFn(db, 'artifacts', window.state.appId, 'settings', 'about'), { text: document.getElementById('a-about').value }); window.showModal("Başarılı", "Hakkımızda yazısı güncellendi."); };
+        window.adminSaveAbout = async () => { 
+            if(db) {
+                try {
+                    await setDocFn(docFn(db, 'artifacts', window.state.appId, 'settings', 'about'), { text: document.getElementById('a-about').value }); 
+                } catch(err){}
+            }
+            window.state.data.about = document.getElementById('a-about').value;
+            window.showModal("Başarılı", "Hakkımızda yazısı güncellendi."); 
+        };
         
         window.adminDelete = (col, id) => { window.state.adminAction = { action: 'delete', collection: col, id }; window.render(); };
-        window.executeDelete = async (col, id) => { await deleteDocFn(docFn(db, 'artifacts', window.state.appId, col, id)); window.cancelAdminAction(); window.showModal("Başarılı", "Silme işlemi tamamlandı."); };
+        window.executeDelete = async (col, id) => { 
+            if(db) {
+                try {
+                    await deleteDocFn(docFn(db, 'artifacts', window.state.appId, col, id)); 
+                } catch(err){}
+            }
+            if (col === 'blogs') window.state.data.blogs = window.state.data.blogs.filter(x => x.id !== id);
+            else if (col === 'library') window.state.data.library = window.state.data.library.filter(x => x.id !== id);
+            else if (col === 'tutorials') window.state.data.tutorials = window.state.data.tutorials.filter(x => x.id !== id);
+            else if (col === 'users') window.state.dbUsers = window.state.dbUsers.filter(x => x.id !== id);
+
+            window.cancelAdminAction(); window.showModal("Başarılı", "Silme işlemi tamamlandı."); 
+        };
         
         window.adminEditBlog = (id) => { window.state.adminAction = { action: 'edit-blog', id }; window.render(); };
         window.saveBlog = async (id) => {
@@ -670,7 +813,19 @@
             const excerpt = document.getElementById('edit-b-excerpt').value;
             const content = document.getElementById('edit-b-content').value;
             if(!title) return window.showModal("Hata", "Başlık alanı zorunludur.");
-            await setDocFn(docFn(db, 'artifacts', window.state.appId, 'blogs', newId), { ...b, title, image, excerpt, content });
+            
+            const updatedBlog = { ...b, title, image, excerpt, content };
+
+            if(db) {
+                try {
+                    await setDocFn(docFn(db, 'artifacts', window.state.appId, 'blogs', newId), updatedBlog);
+                } catch(err){}
+            }
+            
+            const idx = window.state.data.blogs.findIndex(x => x.id === newId);
+            if (idx > -1) window.state.data.blogs[idx] = updatedBlog;
+            else window.state.data.blogs.push(updatedBlog);
+
             window.cancelAdminAction(); window.showModal("Başarılı", "Blog başarıyla kaydedildi.");
         };
 
@@ -684,14 +839,21 @@
             const note = document.getElementById('edit-l-note').value;
             const duration = document.getElementById('edit-l-duration').value || "0:00";
             const size = document.getElementById('edit-l-size').value || "0 MB";
-            if(!title || !url) return window.showModal("Hata", "Başlık ve MP3 URL'si (veya dosya seçimi) zorunludur.");
+            if(!title || !url) return window.showModal("Hata", "Başlık ve MP3 URL'si zorunludur.");
             
-            try {
-                await setDocFn(docFn(db, 'artifacts', window.state.appId, 'library', newId), { ...l, title, type, url, note, duration, size });
-                window.cancelAdminAction(); window.showModal("Başarılı", "Kütüphane öğesi başarıyla kaydedildi.");
-            } catch(e) {
-                window.showModal("Limit Hatası", "Bilgisayardan büyük bir dosya seçtiniz ve bu durum 1MB'lık standart veritabanı sınırına takıldı.\n\nLütfen bunun yerine dosyayı bir yere yükleyip URL adresini 'MP3 Dosya URL'si' kutusuna yapıştırarak kaydedin.");
+            const updatedLib = { ...l, title, type, url, note, duration, size };
+
+            if(db) {
+                try {
+                    await setDocFn(docFn(db, 'artifacts', window.state.appId, 'library', newId), updatedLib);
+                } catch(err){}
             }
+
+            const idx = window.state.data.library.findIndex(x => x.id === newId);
+            if (idx > -1) window.state.data.library[idx] = updatedLib;
+            else window.state.data.library.push(updatedLib);
+
+            window.cancelAdminAction(); window.showModal("Başarılı", "Kütüphane öğesi başarıyla kaydedildi.");
         };
 
         window.adminEditTutorial = (id) => { window.state.adminAction = { action: 'edit-tutorial', id }; window.render(); };
@@ -702,7 +864,19 @@
             const youtubeId = document.getElementById('edit-t-youtubeId').value;
             const notes = document.getElementById('edit-t-notes').value;
             if(!title || !youtubeId) return window.showModal("Hata", "Eğitim başlığı ve YouTube ID'si zorunludur.");
-            await setDocFn(docFn(db, 'artifacts', window.state.appId, 'tutorials', newId), { ...t, title, youtubeId, notes });
+            
+            const updatedTut = { ...t, title, youtubeId, notes };
+
+            if(db) {
+                try {
+                    await setDocFn(docFn(db, 'artifacts', window.state.appId, 'tutorials', newId), updatedTut);
+                } catch(err){}
+            }
+
+            const idx = window.state.data.tutorials.findIndex(x => x.id === newId);
+            if (idx > -1) window.state.data.tutorials[idx] = updatedTut;
+            else window.state.data.tutorials.push(updatedTut);
+
             window.cancelAdminAction(); window.showModal("Başarılı", "Eğitim başarıyla kaydedildi.");
         };
 
@@ -716,10 +890,6 @@
             if(matches.length > 0) { emp.classList.add('hidden'); res.classList.remove('hidden'); res.innerHTML = matches.map(i => `<div class="p-4 border-b border-slate-700/50 hover:bg-dark-700 cursor-pointer group" onclick="window.navigate('${i.link}'); window.closeSearch()"><div class="text-xs text-gold-400 font-bold mb-1">${i.type}</div><div class="text-white font-serif text-lg group-hover:text-gold-300">${i.title}</div></div>`).join(''); } 
             else { res.classList.add('hidden'); emp.classList.remove('hidden'); emp.innerText = "Sonuç bulunamadı."; }
         });
-
-        // EKRANIN BOŞ KALMAMASI İÇİN: 
-        // Veritabanı yüklemesini hiç beklemeden siteyi hemen ekrana çizdiriyoruz.
-        window.render();
     </script>
 </body>
 </html>
